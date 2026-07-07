@@ -1,0 +1,191 @@
+#!/bin/sh
+#
+# nginx - sysv init script for manually compiled nginx
+#
+# chkconfig: 2345 85 15
+# description: nginx web server
+#
+### BEGIN INIT INFO
+# Provides:          nginx
+# Required-Start:    $network $remote_fs
+# Required-Stop:     $network $remote_fs
+# Should-Start:
+# Should-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: nginx web server
+# Description:       nginx HTTP and reverse proxy server
+### END INIT INFO
+
+
+### CONFIG ###
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
+
+NAME="nginx"
+
+NGINX="/usr/local/nginx/sbin/nginx"
+NGINX_CONF="/usr/local/nginx/conf/nginx.conf"
+PID_FILE="/usr/local/nginx/logs/nginx.pid"
+
+
+### FUNCTIONS ###
+
+
+is_running()
+{
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE" 2>/dev/null)
+
+        if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+
+start()
+{
+    echo "Starting $NAME..."
+
+    if is_running; then
+        echo "$NAME is already running"
+        return 0
+    fi
+
+
+    if [ ! -x "$NGINX" ]; then
+        echo "$NGINX not found"
+        return 1
+    fi
+
+
+    "$NGINX" -c "$NGINX_CONF"
+
+    sleep 1
+
+
+    if is_running; then
+        echo "$NAME started"
+        return 0
+    else
+        echo "$NAME failed to start"
+        return 1
+    fi
+}
+
+
+stop()
+{
+    echo "Stopping $NAME..."
+
+    if ! is_running; then
+        echo "$NAME is not running"
+        return 0
+    fi
+
+
+    PID=$(cat "$PID_FILE" 2>/dev/null)
+
+
+    echo "Sending QUIT signal to nginx..."
+
+    kill -QUIT "$PID"
+
+
+    for i in 1 2 3 4 5 6 7 8 9 10
+    do
+        if ! kill -0 "$PID" 2>/dev/null; then
+            echo "$NAME stopped"
+            return 0
+        fi
+
+        sleep 1
+    done
+
+
+    echo "$NAME did not stop gracefully, forcing shutdown"
+
+    kill -TERM "$PID"
+
+    return 0
+}
+
+
+reload()
+{
+    echo "Reloading $NAME..."
+
+    if ! is_running; then
+        echo "$NAME is not running"
+        return 1
+    fi
+
+
+    PID=$(cat "$PID_FILE" 2>/dev/null)
+
+    kill -HUP "$PID"
+
+    echo "$NAME reloaded"
+}
+
+
+restart()
+{
+    stop
+
+    sleep 1
+
+    start
+}
+
+
+status()
+{
+    if is_running; then
+        PID=$(cat "$PID_FILE")
+
+        echo "$NAME is running (pid: $PID)"
+        return 0
+    else
+        echo "$NAME is stopped"
+        return 3
+    fi
+}
+
+
+
+### MAIN ###
+
+case "$1" in
+
+    start)
+        start
+        ;;
+
+    stop)
+        stop
+        ;;
+
+    restart)
+        restart
+        ;;
+
+    reload)
+        reload
+        ;;
+
+    status)
+        status
+        ;;
+
+    *)
+        echo "Usage: $0 {start|stop|restart|reload|status}"
+        exit 1
+        ;;
+
+esac
+
+exit $?
