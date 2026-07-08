@@ -23,54 +23,73 @@
 # Source function library.
 . /etc/init.d/functions
 
-### CONFIG ###
-
+### Config ###
 NAME="minio"
 DAEMON="/usr/local/bin/minio"
 
 PIDFILE="/var/run/minio.pid"
 LOCKFILE="/var/lock/subsys/minio"
-
 CONFIG="/etc/sysconfig/minio"
 
 [ -r "$CONFIG" ] && . "$CONFIG"
 
-
-# Defaults
 MINIO_VOLUMES=${MINIO_VOLUMES:-"/data"}
 MINIO_OPTS=${MINIO_OPTS:-""}
 
 RETVAL=0
+
 
 start() {
     echo -n $"Starting $NAME: "
 
     [ -x "$DAEMON" ] || exit 5
 
-    daemon \
-        --pidfile="$PIDFILE" \
-        "$DAEMON server $MINIO_OPTS $MINIO_VOLUMES >/dev/null 2>&1 & echo \$! > $PIDFILE"
+    if [ -f "$PIDFILE" ]; then
+        PID=$(cat "$PIDFILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            echo $"already running"
+            return 0
+        fi
+        rm -f "$PIDFILE"
+    fi
 
-    RETVAL=$?
+    "$DAEMON" server $MINIO_OPTS $MINIO_VOLUMES >/dev/null 2>&1 &
+    PID=$!
+
+    sleep 1
+
+    if kill -0 "$PID" 2>/dev/null; then
+        echo "$PID" > "$PIDFILE"
+        touch "$LOCKFILE"
+        success
+        RETVAL=0
+    else
+        failure
+        RETVAL=1
+    fi
 
     echo
-
-    [ $RETVAL -eq 0 ] && touch "$LOCKFILE"
-
     return $RETVAL
 }
 
 stop() {
     echo -n $"Stopping $NAME: "
 
-    killproc -p "$PIDFILE" "$DAEMON"
+    if [ ! -f "$PIDFILE" ]; then
+        echo $"not running"
+        RETVAL=0
+        echo
+        return 0
+    fi
 
+    killproc -p "$PIDFILE" "$DAEMON"
     RETVAL=$?
 
+    if [ $RETVAL -eq 0 ]; then
+        rm -f "$PIDFILE" "$LOCKFILE"
+    fi
+
     echo
-
-    [ $RETVAL -eq 0 ] && rm -f "$LOCKFILE" "$PIDFILE"
-
     return $RETVAL
 }
 
@@ -80,14 +99,15 @@ restart() {
 }
 
 reload() {
-    restart
+    echo $"Reload is not supported."
+    return 3
 }
 
-status() {
+do_status() {
     status -p "$PIDFILE" "$DAEMON"
-    RETVAL=$?
-    return $RETVAL
+    return $?
 }
+
 
 case "$1" in
     start)
@@ -96,21 +116,27 @@ case "$1" in
     stop)
         stop
         ;;
-    restart|force-reload)
+    status)
+        do_status
+        ;;
+    restart)
         restart
         ;;
     reload)
         reload
         ;;
-    status)
-        status
+    force-reload)
+        restart
         ;;
     condrestart|try-restart)
-        [ -f "$LOCKFILE" ] && restart
+        if [ -f "$LOCKFILE" ]; then
+            restart
+        fi
         ;;
     *)
-        echo $"Usage: $0 {start|stop|status|restart|reload|condrestart}"
+        echo $"Usage: $0 {start|stop|status|restart|reload|force-reload|condrestart}"
         exit 2
+        ;;
 esac
 
-exit $RETVAL
+exit $?
