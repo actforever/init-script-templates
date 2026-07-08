@@ -1,0 +1,219 @@
+#!/bin/sh
+#
+# redis - SysV init script for Redis Server
+#
+# chkconfig: 2345 90 10
+# description: Redis persistent key-value database
+# processname: redis-server
+# pidfile: /var/run/redis.pid
+# config: /etc/redis/redis.conf
+#
+### BEGIN INIT INFO
+# Provides:          redis
+# Required-Start:    $network $local_fs
+# Required-Stop:     $network $local_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Redis Server
+# Description:       Starts and stops Redis server.
+### END INIT INFO
+
+
+. /etc/init.d/functions
+
+
+### Config ###
+
+NAME="redis"
+
+DAEMON="/usr/local/bin/redis-server"
+CLI="/usr/local/bin/redis-cli"
+
+CONFIG="/etc/sysconfig/redis"
+
+PIDFILE="/var/run/redis.pid"
+
+LOCKFILE="/var/lock/subsys/redis"
+
+
+RETVAL=0
+
+
+start()
+{
+    echo -n $"Starting $NAME: "
+
+    [ -x "$DAEMON" ] || exit 5
+
+
+    if [ -f "$PIDFILE" ]; then
+
+        PID=$(cat "$PIDFILE")
+
+        if kill -0 "$PID" 2>/dev/null; then
+            echo $"already running"
+            return 0
+        fi
+
+        rm -f "$PIDFILE"
+    fi
+
+
+    "$DAEMON" "$CONFIG"
+
+
+    sleep 1
+
+
+    if [ -f "$PIDFILE" ]; then
+
+        PID=$(cat "$PIDFILE")
+
+        if kill -0 "$PID" 2>/dev/null; then
+
+            touch "$LOCKFILE"
+
+            success
+            RETVAL=0
+
+        else
+
+            failure
+            RETVAL=1
+
+        fi
+
+    else
+
+        failure
+        RETVAL=1
+
+    fi
+
+
+    echo
+
+    return $RETVAL
+}
+
+
+
+stop()
+{
+    echo -n $"Stopping $NAME: "
+
+
+    if [ ! -f "$PIDFILE" ]; then
+
+        echo $"not running"
+        echo
+
+        return 0
+    fi
+
+
+    PID=$(cat "$PIDFILE")
+
+
+    if [ -x "$CLI" ]; then
+
+        "$CLI" shutdown >/dev/null 2>&1
+
+    else
+
+        kill "$PID"
+
+    fi
+
+
+    RETVAL=$?
+
+
+    if [ $RETVAL -eq 0 ]; then
+
+        rm -f "$PIDFILE"
+        rm -f "$LOCKFILE"
+
+        success
+
+    else
+
+        failure
+
+    fi
+
+
+    echo
+
+    return $RETVAL
+}
+
+
+
+restart()
+{
+    stop
+    start
+}
+
+
+
+status()
+{
+    if [ -f "$PIDFILE" ]; then
+
+        PID=$(cat "$PIDFILE")
+
+        if kill -0 "$PID" 2>/dev/null; then
+
+            echo "$NAME (pid $PID) is running"
+
+            return 0
+
+        fi
+
+    fi
+
+
+    echo "$NAME is stopped"
+
+    return 3
+}
+
+
+
+case "$1" in
+
+start)
+    start
+    ;;
+
+stop)
+    stop
+    ;;
+
+restart)
+    restart
+    ;;
+
+status)
+    status
+    ;;
+
+condrestart|try-restart)
+
+    if [ -f "$LOCKFILE" ]; then
+        restart
+    fi
+    ;;
+
+
+*)
+    echo $"Usage: $0 {start|stop|restart|status|condrestart}"
+    exit 2
+    ;;
+
+esac
+
+
+exit $?
